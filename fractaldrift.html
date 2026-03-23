@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FractalDrift</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 20px;
+      background: #030608;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      min-height: 100vh;
+      box-sizing: border-box;
+    }
+    #game-wrap {
+      width: 100%;
+      max-width: 820px;
+    }
+  </style>
+</head>
+<body>
+<div id="game-wrap">
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap');
+  * { box-sizing:border-box; margin:0; padding:0; }
+
+  #fd-root {
+    font-family:'Space Mono',monospace;
+    background:#060a10;
+    color:#e8eaf0;
+    width:100%;
+    border-radius:12px;
+    overflow:hidden;
+    user-select:none;
+  }
+
+  #fd-canvas {
+    width:100%;
+    height:380px;
+    position:relative;
+    overflow:hidden;
+  }
+
+  #braid-svg { width:100%; height:100%; display:block; }
+
+  #fd-hud {
+    display:flex;
+    align-items:stretch;
+    background:#0a1018;
+    border-top:1px solid #1a2430;
+    min-height:140px;
+  }
+
+  #dim-panel {
+    padding:0 20px;
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    gap:6px;
+    flex:1;
+    border-right:1px solid #1a2430;
+  }
+  #dim-panel-label { font-size:8px; letter-spacing:0.16em; text-transform:uppercase; color:#2a3a50; }
+  #dim-name-big { font-family:'Syne',sans-serif; font-size:20px; font-weight:800; letter-spacing:0.06em; text-transform:uppercase; transition:color 0.3s; }
+  #dim-icon-big { font-size:28px; line-height:1; }
+
+  #seq-panel {
+    padding:0 20px;
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    align-items:center;
+    gap:8px;
+    min-width:260px;
+    border-right:1px solid #1a2430;
+  }
+  #seq-label { font-size:8px; letter-spacing:0.16em; text-transform:uppercase; color:#2a3a50; }
+  #seq-status { font-size:10px; color:#2a4060; letter-spacing:0.06em; text-align:center; }
+
+  #seq-keys { display:flex; align-items:center; gap:8px; }
+
+  .seq-key {
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:3px;
+    padding:8px 12px;
+    border-radius:6px;
+    border:1px solid;
+    min-width:60px;
+    transition:all 0.15s;
+    font-family:'Space Mono',monospace;
+  }
+  .seq-key .sk-arrow { font-size:20px; line-height:1; }
+  .seq-key .sk-dim   { font-size:8px; letter-spacing:0.08em; text-transform:uppercase; }
+
+  .seq-key.pending { opacity:0.3; }
+  .seq-key.active  { opacity:1; animation:pulse-key 0.7s ease-in-out infinite; }
+  .seq-key.done    { opacity:0.45; }
+  .seq-key.hit     { opacity:1; animation:none; }
+  .seq-key.missed  { opacity:0.15; animation:none; }
+
+  @keyframes pulse-key { 0%,100%{transform:scale(1)} 50%{transform:scale(1.07)} }
+
+  .seq-sep { font-size:16px; color:#1a3050; }
+
+  #timer-wrap {
+    width:200px;
+    height:5px;
+    background:#0f1820;
+    border-radius:3px;
+    overflow:hidden;
+    transition:opacity 0.2s;
+  }
+  #timer-fill { height:100%; border-radius:3px; }
+
+  #fd-stats {
+    padding:0 20px;
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    gap:8px;
+    min-width:120px;
+  }
+  .stat-row { display:flex; justify-content:space-between; gap:12px; align-items:baseline; }
+  .stat-label { font-size:8px; letter-spacing:0.1em; color:#2a3a50; text-transform:uppercase; }
+  .stat-val { font-size:13px; font-weight:700; }
+
+  #fd-float {
+    position:absolute;
+    left:50%; top:50%;
+    transform:translate(-50%,-50%);
+    font-family:'Syne',sans-serif;
+    font-size:30px;
+    font-weight:800;
+    letter-spacing:0.08em;
+    text-transform:uppercase;
+    pointer-events:none;
+    opacity:0;
+    z-index:20;
+    text-align:center;
+    white-space:nowrap;
+  }
+  @keyframes pop-fade { 0%{opacity:1;transform:translate(-50%,-60%) scale(1.1)} 100%{opacity:0;transform:translate(-50%,-85%) scale(0.95)} }
+  #fd-float.pop { animation:pop-fade 0.9s ease-out forwards; }
+
+  #start-overlay {
+    position:absolute; inset:0;
+    background:rgba(6,10,16,0.93);
+    display:flex; flex-direction:column;
+    align-items:center; justify-content:center;
+    gap:14px; z-index:30;
+    border-radius:12px 12px 0 0;
+  }
+  #start-overlay h2 {
+    font-family:'Syne',sans-serif; font-size:26px;
+    font-weight:800; letter-spacing:0.1em; text-transform:uppercase;
+  }
+  #start-overlay p {
+    font-size:10px; color:#4a6280; text-align:center;
+    line-height:2; max-width:340px; letter-spacing:0.05em;
+  }
+  #overlay-btn {
+    margin-top:6px; padding:10px 28px;
+    background:transparent; border:1px solid #3a6aa0;
+    color:#7ab8f0; font-family:'Space Mono',monospace;
+    font-size:11px; letter-spacing:0.15em; text-transform:uppercase;
+    border-radius:6px; cursor:pointer; transition:all 0.2s;
+  }
+  #overlay-btn:hover { background:#1a2a40; border-color:#7ab8f0; }
+
+  #results-grid { display:none; grid-template-columns:1fr 1fr; gap:8px 24px; }
+  #results-grid.show { display:grid; }
+  .res-row { display:flex; flex-direction:column; gap:2px; }
+  .res-label { font-size:8px; letter-spacing:0.14em; color:#2a4060; text-transform:uppercase; }
+  .res-val { font-size:16px; font-weight:700; }
+
+  .c-Water        { color:#4a9eda; border-color:#1a4a7a; background:#070f1a; }
+  .c-Air          { color:#a0c8f0; border-color:#3a5a80; background:#0a1420; }
+  .c-Earth        { color:#9a7a4a; border-color:#5a3a1a; background:#120c04; }
+  .c-Fire         { color:#e87a3a; border-color:#8a3a1a; background:#180800; }
+  .c-Space        { color:#9a7aff; border-color:#4a3a90; background:#0a0818; }
+  .c-Time         { color:#f5c842; border-color:#8a6010; background:#181200; }
+  .c-Gravity      { color:#6a9a8a; border-color:#2a5a4a; background:#060e0a; }
+  .c-Technosphere { color:#4ae0b0; border-color:#1a7050; background:#030e09; }
+</style>
+
+<div id="fd-root">
+  <div id="fd-canvas">
+    <svg id="braid-svg" viewBox="0 0 700 380" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <radialGradient id="vp-glow" cx="50%" cy="28%" r="40%">
+          <stop offset="0%" stop-color="#1a3a6a" stop-opacity="0.4"/>
+          <stop offset="100%" stop-color="#060a10" stop-opacity="0"/>
+        </radialGradient>
+      </defs>
+      <rect width="700" height="380" fill="#060a10"/>
+      <rect width="700" height="380" fill="url(#vp-glow)"/>
+      <g id="stars"></g>
+      <g id="road"></g>
+      <g id="zone-marks"></g>
+      <g id="player-pip">
+        <circle id="pip-glow"  cx="350" cy="342" r="24" fill="none" stroke="#4a9eda" stroke-width="1" opacity="0.18"/>
+        <circle id="pip-outer" cx="350" cy="342" r="11" fill="#4a9eda" opacity="0.3"/>
+        <circle id="pip-inner" cx="350" cy="342" r="5"  fill="#4a9eda"/>
+        <polygon id="pip-arrow" points="350,318 342,332 358,332" fill="#4a9eda" opacity="0.55"/>
+      </g>
+      <polygon id="zone-highlight" points="" fill="transparent" opacity="0"/>
+    </svg>
+
+    <div id="fd-float"></div>
+
+    <div id="start-overlay">
+      <h2 id="overlay-title">FractalDrift</h2>
+      <p id="overlay-body">
+        You travel a dimensional braid stretching into the distance.<br>
+        <strong style="color:#4a9eda">Glowing bands</strong> are Intersection Zones — watch them approach.<br>
+        When you enter one, keys appear <strong style="color:#e8eaf0">one at a time</strong>.<br>
+        Press the matching arrow key for each. Miss = speed penalty.
+      </p>
+      <div id="results-grid">
+        <div class="res-row"><span class="res-label">Time</span><span class="res-val" id="res-time" style="color:#f5c842">—</span></div>
+        <div class="res-row"><span class="res-label">Hits</span><span class="res-val" id="res-hits" style="color:#4ae0b0">—</span></div>
+        <div class="res-row"><span class="res-label">Misses</span><span class="res-val" id="res-misses" style="color:#e87a3a">—</span></div>
+        <div class="res-row"><span class="res-label">Jumps</span><span class="res-val" id="res-jumps" style="color:#9a7aff">—</span></div>
+      </div>
+      <button id="overlay-btn">BEGIN TRAVERSE</button>
+    </div>
+  </div>
+
+  <div id="fd-hud">
+    <div id="dim-panel">
+      <div id="dim-panel-label">Current Dimension</div>
+      <div id="dim-icon-big">~</div>
+      <div id="dim-name-big" style="color:#4a9eda">Water</div>
+    </div>
+
+    <div id="seq-panel">
+      <div id="seq-label">Intersection Inputs</div>
+      <div id="seq-keys"></div>
+      <div id="seq-status">— traveling —</div>
+      <div id="timer-wrap" style="opacity:0"><div id="timer-fill"></div></div>
+    </div>
+
+    <div id="fd-stats">
+      <div class="stat-row"><span class="stat-label">Time</span><span class="stat-val" id="stat-time" style="color:#e8eaf0">0.0s</span></div>
+      <div class="stat-row"><span class="stat-label">Hits</span><span class="stat-val" id="stat-hits" style="color:#4ae0b0">0</span></div>
+      <div class="stat-row"><span class="stat-label">Misses</span><span class="stat-val" id="stat-misses" style="color:#e87a3a">0</span></div>
+      <div class="stat-row"><span class="stat-label">Jumps</span><span class="stat-val" id="stat-jumps" style="color:#9a7aff">0</span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+
+const DIMS = {
+  Water:        { color:'#4a9eda', roadColor:'#0d2a40', icon:'~'  },
+  Air:          { color:'#a0c8f0', roadColor:'#1a2a3c', icon:'∿'  },
+  Earth:        { color:'#9a7a4a', roadColor:'#1a1008', icon:'#'  },
+  Fire:         { color:'#e87a3a', roadColor:'#200800', icon:'※'  },
+  Space:        { color:'#9a7aff', roadColor:'#100820', icon:'✦'  },
+  Time:         { color:'#f5c842', roadColor:'#1e1600', icon:'⊙'  },
+  Gravity:      { color:'#6a9a8a', roadColor:'#081208', icon:'↓'  },
+  Technosphere: { color:'#4ae0b0', roadColor:'#041808', icon:'⬡'  },
+};
+const DIM_NAMES = Object.keys(DIMS);
+
+const ARROW_MAP  = { ArrowUp:0, ArrowRight:1, ArrowDown:2, ArrowLeft:3 };
+const ARROW_ICON = { 0:'↑', 1:'→', 2:'↓', 3:'←' };
+const ARROW_NAME = { 0:'UP', 1:'RIGHT', 2:'DOWN', 3:'LEFT' };
+
+const VP_X=350, VP_Y=82;
+const ROAD_BOT_L=100, ROAD_BOT_R=600, ROAD_BOT_Y=365;
+const ROAD_VP_SPREAD=7;
+
+const BASE_SPEED = 0.045;
+const KEY_WINDOW = 3000;
+const ZONE_WIDTH = 0.14;
+
+function lerp(a,b,t){ return a+(b-a)*t; }
+function roadX(t,side){
+  return lerp(VP_X+side*ROAD_VP_SPREAD, side<0?ROAD_BOT_L:ROAD_BOT_R, t);
+}
+function roadY(t){ return lerp(VP_Y, ROAD_BOT_Y, t); }
+
+let gameActive=false, travelDist=0, currentDim='Water';
+let score={hits:0,misses:0,jumps:0}, elapsed=0, lastTs=null, animFrame=null;
+let penaltySlow=0;
+let zones=[], zoneState='traveling';
+let activeZone=null, seqIndex=0, seqItems=[], missTimeout=null;
+
+const ZONE_POSITIONS=[0.15, 0.30, 0.46, 0.62, 0.78];
+
+function makeStars(){
+  const g=document.getElementById('stars'); g.innerHTML='';
+  for(let i=0;i<90;i++){
+    const c=document.createElementNS('http://www.w3.org/2000/svg','circle');
+    c.setAttribute('cx',Math.random()*700);
+    c.setAttribute('cy',Math.random()*VP_Y*2.8);
+    c.setAttribute('r',Math.random()*1.0+0.2);
+    c.setAttribute('fill','#8090b0');
+    c.setAttribute('opacity',Math.random()*0.45+0.08);
+    g.appendChild(c);
+  }
+}
+
+function drawRoad(){
+  const g=document.getElementById('road'); g.innerHTML='';
+  const col=DIMS[currentDim].color;
+  const rc=DIMS[currentDim].roadColor;
+
+  const fill=document.createElementNS('http://www.w3.org/2000/svg','polygon');
+  fill.setAttribute('points',
+    `${VP_X-ROAD_VP_SPREAD},${VP_Y} ${VP_X+ROAD_VP_SPREAD},${VP_Y} ${ROAD_BOT_R},${ROAD_BOT_Y} ${ROAD_BOT_L},${ROAD_BOT_Y}`);
+  fill.setAttribute('fill',rc); fill.setAttribute('opacity','0.75');
+  g.appendChild(fill);
+
+  ['left','right'].forEach(side=>{
+    const s=side==='left'?-1:1;
+    const ln=document.createElementNS('http://www.w3.org/2000/svg','line');
+    ln.setAttribute('x1',VP_X+s*ROAD_VP_SPREAD); ln.setAttribute('y1',VP_Y);
+    ln.setAttribute('x2',side==='left'?ROAD_BOT_L:ROAD_BOT_R); ln.setAttribute('y2',ROAD_BOT_Y);
+    ln.setAttribute('stroke',col); ln.setAttribute('stroke-width','1.5');
+    ln.setAttribute('opacity','0.5');
+    g.appendChild(ln);
+  });
+
+  for(let i=1;i<=9;i++){
+    const t0=i/10, t1=(i+0.35)/10;
+    const x0=lerp(VP_X,350,t0), y0=roadY(t0);
+    const x1=lerp(VP_X,350,t1), y1=roadY(t1);
+    const d=document.createElementNS('http://www.w3.org/2000/svg','line');
+    d.setAttribute('x1',x0);d.setAttribute('y1',y0);
+    d.setAttribute('x2',x1);d.setAttribute('y2',y1);
+    d.setAttribute('stroke',col);
+    d.setAttribute('stroke-width',String(lerp(0.5,2.5,t0)));
+    d.setAttribute('opacity','0.18');
+    g.appendChild(d);
+  }
+
+  const hg=document.createElementNS('http://www.w3.org/2000/svg','ellipse');
+  hg.setAttribute('cx',VP_X); hg.setAttribute('cy',VP_Y);
+  hg.setAttribute('rx','70'); hg.setAttribute('ry','14');
+  hg.setAttribute('fill',col); hg.setAttribute('opacity','0.1');
+  g.appendChild(hg);
+}
+
+function generateZones(){
+  zones=[];
+  ZONE_POSITIONS.forEach(pos=>{
+    const countW=[1,1,1,2,2,3];
+    const count=countW[Math.floor(Math.random()*countW.length)];
+    const usedA=[], items=[];
+    for(let k=0;k<count&&k<4;k++){
+      const avail=[0,1,2,3].filter(a=>!usedA.includes(a));
+      const arrow=avail[Math.floor(Math.random()*avail.length)];
+      usedA.push(arrow);
+      items.push({ arrow, dim:DIM_NAMES[Math.floor(Math.random()*DIM_NAMES.length)] });
+    }
+    zones.push({ at:pos, width:ZONE_WIDTH, items, triggered:false, passed:false });
+  });
+}
+
+function drawZoneMarks(){
+  const g=document.getElementById('zone-marks'); g.innerHTML='';
+  const col=DIMS[currentDim].color;
+
+  zones.forEach(z=>{
+    if(z.passed) return;
+    const ahead=z.at-travelDist;
+    if(ahead < -z.width*0.6 || ahead > 1.1) return;
+
+    const t_front=Math.max(0,Math.min(1,1-(ahead-z.width*0.5)));
+    const t_back =Math.max(0,Math.min(1,1-(ahead+z.width*0.5)));
+
+    const xl_f=roadX(t_front,-1), xr_f=roadX(t_front,1), y_f=roadY(t_front);
+    const xl_b=roadX(t_back,-1),  xr_b=roadX(t_back,1),  y_b=roadY(t_back);
+
+    const isActive=(activeZone===z);
+
+    const band=document.createElementNS('http://www.w3.org/2000/svg','polygon');
+    band.setAttribute('points',`${xl_f},${y_f} ${xr_f},${y_f} ${xr_b},${y_b} ${xl_b},${y_b}`);
+    band.setAttribute('fill',col);
+    band.setAttribute('opacity', isActive ? '0.18' : '0.06');
+    g.appendChild(band);
+
+    const front=document.createElementNS('http://www.w3.org/2000/svg','line');
+    front.setAttribute('x1',xl_f); front.setAttribute('y1',y_f);
+    front.setAttribute('x2',xr_f); front.setAttribute('y2',y_f);
+    front.setAttribute('stroke',col);
+    front.setAttribute('stroke-width', isActive ? '3' : String(Math.max(0.8,lerp(0.5,2.5,t_front))));
+    front.setAttribute('opacity', isActive ? '1' : '0.4');
+    g.appendChild(front);
+
+    const back=document.createElementNS('http://www.w3.org/2000/svg','line');
+    back.setAttribute('x1',xl_b); back.setAttribute('y1',y_b);
+    back.setAttribute('x2',xr_b); back.setAttribute('y2',y_b);
+    back.setAttribute('stroke',col);
+    back.setAttribute('stroke-width', isActive ? '2' : String(Math.max(0.5,lerp(0.4,2,t_back))));
+    back.setAttribute('opacity', isActive ? '0.7' : '0.25');
+    g.appendChild(back);
+
+    if(y_f > VP_Y+30){
+      const fs=Math.max(8, Math.min(14, lerp(7,15,t_front)));
+      const lbl=document.createElementNS('http://www.w3.org/2000/svg','text');
+      lbl.setAttribute('x',lerp(VP_X,350,t_front));
+      lbl.setAttribute('y',y_f-8);
+      lbl.setAttribute('text-anchor','middle');
+      lbl.setAttribute('font-family','Space Mono,monospace');
+      lbl.setAttribute('font-size',String(fs));
+      lbl.setAttribute('fill',col);
+      lbl.setAttribute('opacity', isActive ? '1' : '0.35');
+      lbl.setAttribute('letter-spacing','0.1em');
+      lbl.textContent=`DSF — ${z.items.length} input${z.items.length>1?'s':''}`;
+      g.appendChild(lbl);
+    }
+  });
+
+  if(activeZone){
+    const ahead=activeZone.at-travelDist;
+    const t_front=Math.max(0,Math.min(1,1-(ahead-activeZone.width*0.5)));
+    const t_back =Math.max(0,Math.min(1,1-(ahead+activeZone.width*0.5)));
+    const xl_f=roadX(t_front,-1),xr_f=roadX(t_front,1),y_f=roadY(t_front);
+    const xl_b=roadX(t_back,-1), xr_b=roadX(t_back,1), y_b=roadY(t_back);
+    const hl=document.getElementById('zone-highlight');
+    hl.setAttribute('points',`${xl_f},${y_f} ${xr_f},${y_f} ${xr_b},${y_b} ${xl_b},${y_b}`);
+    hl.setAttribute('fill',DIMS[currentDim].color);
+    hl.setAttribute('opacity','0.07');
+  } else {
+    document.getElementById('zone-highlight').setAttribute('opacity','0');
+  }
+}
+
+function updatePip(){
+  const col=DIMS[currentDim].color;
+  document.getElementById('pip-glow').setAttribute('stroke',col);
+  document.getElementById('pip-outer').setAttribute('fill',col);
+  document.getElementById('pip-inner').setAttribute('fill',col);
+  document.getElementById('pip-arrow').setAttribute('fill',col);
+}
+
+function updateDimDisplay(){
+  const d=DIMS[currentDim];
+  document.getElementById('dim-icon-big').textContent=d.icon;
+  document.getElementById('dim-name-big').textContent=currentDim;
+  document.getElementById('dim-name-big').style.color=d.color;
+}
+
+function updateStats(){
+  document.getElementById('stat-time').textContent=elapsed.toFixed(1)+'s';
+  document.getElementById('stat-hits').textContent=score.hits;
+  document.getElementById('stat-misses').textContent=score.misses;
+  document.getElementById('stat-jumps').textContent=score.jumps;
+}
+
+function renderSeqPanel(){
+  const keysEl=document.getElementById('seq-keys');
+  const statusEl=document.getElementById('seq-status');
+  const timerWrap=document.getElementById('timer-wrap');
+
+  if(zoneState==='traveling'||zoneState==='done'){
+    keysEl.innerHTML='';
+    statusEl.textContent='— traveling —';
+    statusEl.style.color='#1a3050';
+    timerWrap.style.opacity='0';
+    return;
+  }
+
+  if(zoneState==='active'){
+    timerWrap.style.opacity='1';
+    statusEl.style.color='#7ab8f0';
+    if(seqIndex < seqItems.length){
+      const cur=seqItems[seqIndex];
+      statusEl.textContent=`Press ${ARROW_NAME[cur.arrow]} → ${cur.dim}`;
+    } else {
+      statusEl.textContent='Sequence complete!';
+    }
+
+    keysEl.innerHTML='';
+    seqItems.forEach((item,i)=>{
+      if(i>0){
+        const sep=document.createElement('span');
+        sep.className='seq-sep'; sep.textContent='›';
+        keysEl.appendChild(sep);
+      }
+      const chip=document.createElement('div');
+      chip.className=`seq-key c-${item.dim}`;
+      chip.id=`seq-chip-${i}`;
+      if(i<seqIndex)        chip.classList.add('done');
+      else if(i===seqIndex) chip.classList.add('active');
+      else                  chip.classList.add('pending');
+      chip.innerHTML=`<span class="sk-arrow">${ARROW_ICON[item.arrow]}</span><span class="sk-dim">${item.dim}</span>`;
+      keysEl.appendChild(chip);
+    });
+  }
+}
+
+function startTimerBar(color){
+  const fill=document.getElementById('timer-fill');
+  fill.style.transition='none';
+  fill.style.width='100%';
+  fill.style.background=color;
+  void fill.offsetWidth;
+  fill.style.transition=`width ${KEY_WINDOW}ms linear, background 0.5s`;
+  fill.style.width='0%';
+}
+
+function showFloat(txt,color){
+  const el=document.getElementById('fd-float');
+  el.textContent=txt; el.style.color=color;
+  el.className=''; void el.offsetWidth; el.className='pop';
+}
+
+function checkZones(){
+  if(zoneState==='active') return;
+  for(let i=0;i<zones.length;i++){
+    const z=zones[i];
+    if(z.passed||z.triggered) continue;
+    const ahead=z.at-travelDist;
+    if(ahead<=z.width*0.5 && ahead>=-z.width*0.5){
+      enterZone(z); return;
+    }
+    if(ahead<-z.width*0.5){ z.passed=true; }
+  }
+}
+
+function enterZone(z){
+  z.triggered=true;
+  activeZone=z;
+  zoneState='active';
+  seqItems=[...z.items];
+  seqIndex=0;
+  renderSeqPanel();
+  startNextKey();
+}
+
+function startNextKey(){
+  if(seqIndex>=seqItems.length){ finishZone(); return; }
+  const item=seqItems[seqIndex];
+  startTimerBar(DIMS[item.dim].color);
+  if(missTimeout) clearTimeout(missTimeout);
+  missTimeout=setTimeout(()=>{ if(zoneState==='active') missSingleKey(); }, KEY_WINDOW);
+  renderSeqPanel();
+}
+
+function missSingleKey(){
+  score.misses++;
+  penaltySlow+=0.8;
+  showFloat('MISS', '#e87a3a');
+  const chip=document.getElementById(`seq-chip-${seqIndex}`);
+  if(chip){ chip.classList.remove('active'); chip.classList.add('missed'); }
+  seqIndex++;
+  updateStats();
+  setTimeout(()=>{ startNextKey(); renderSeqPanel(); }, 350);
+}
+
+function finishZone(){
+  if(missTimeout) clearTimeout(missTimeout);
+  zoneState='done';
+  if(activeZone) activeZone.passed=true;
+  activeZone=null;
+  setTimeout(()=>{ zoneState='traveling'; renderSeqPanel(); }, 500);
+}
+
+function handleKey(key){
+  if(!gameActive||zoneState!=='active') return;
+  if(seqIndex>=seqItems.length) return;
+  const idx=ARROW_MAP[key]; if(idx===undefined) return;
+  const expected=seqItems[seqIndex];
+
+  if(idx===expected.arrow){
+    if(missTimeout) clearTimeout(missTimeout);
+    score.hits++; score.jumps++;
+    currentDim=expected.dim;
+    showFloat('HIT', DIMS[currentDim].color);
+    const chip=document.getElementById(`seq-chip-${seqIndex}`);
+    if(chip){ chip.classList.remove('active'); chip.classList.add('hit'); }
+    seqIndex++;
+    updatePip(); updateDimDisplay(); drawRoad(); updateStats();
+    setTimeout(()=>{ startNextKey(); renderSeqPanel(); }, 250);
+  } else {
+    showFloat('WRONG KEY', '#e87a3a');
+  }
+}
+
+function showEndScreen(){
+  gameActive=false;
+  if(animFrame) cancelAnimationFrame(animFrame);
+  if(missTimeout) clearTimeout(missTimeout);
+  document.getElementById('overlay-title').textContent='ARRIVED';
+  document.getElementById('overlay-body').textContent='Traverse complete. Your run:';
+  document.getElementById('res-time').textContent=elapsed.toFixed(1)+'s';
+  document.getElementById('res-hits').textContent=score.hits;
+  document.getElementById('res-misses').textContent=score.misses;
+  document.getElementById('res-jumps').textContent=score.jumps;
+  document.getElementById('results-grid').classList.add('show');
+  document.getElementById('overlay-btn').textContent='TRAVERSE AGAIN';
+  document.getElementById('start-overlay').style.display='flex';
+}
+
+function gameLoop(ts){
+  if(!gameActive) return;
+  if(!lastTs) lastTs=ts;
+  const dt=(ts-lastTs)/1000; lastTs=ts;
+  elapsed+=dt;
+
+  let speed=BASE_SPEED;
+  if(penaltySlow>0){ speed*=0.2; penaltySlow-=dt; }
+  travelDist+=speed*dt;
+
+  if(activeZone){
+    const ahead=activeZone.at-travelDist;
+    if(ahead<-activeZone.width*0.5 && zoneState==='active'){
+      if(missTimeout) clearTimeout(missTimeout);
+      for(let k=seqIndex;k<seqItems.length;k++) score.misses++;
+      penaltySlow+=0.8;
+      finishZone();
+      updateStats();
+    }
+  }
+
+  checkZones();
+  drawZoneMarks();
+  renderSeqPanel();
+  updateStats();
+
+  if(travelDist>=1.0){ showEndScreen(); return; }
+  animFrame=requestAnimationFrame(gameLoop);
+}
+
+function startGame(){
+  document.getElementById('start-overlay').style.display='none';
+  document.getElementById('results-grid').classList.remove('show');
+  travelDist=0; currentDim='Water';
+  score={hits:0,misses:0,jumps:0}; elapsed=0; lastTs=null;
+  penaltySlow=0; zoneState='traveling'; activeZone=null;
+  seqIndex=0; seqItems=[];
+  if(missTimeout) clearTimeout(missTimeout);
+  generateZones();
+  makeStars(); drawRoad(); drawZoneMarks();
+  updatePip(); updateDimDisplay(); renderSeqPanel(); updateStats();
+  gameActive=true; animFrame=requestAnimationFrame(gameLoop);
+}
+
+makeStars(); drawRoad();
+document.getElementById('overlay-btn').addEventListener('click', startGame);
+document.addEventListener('keydown', e=>{
+  if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)){
+    e.preventDefault(); handleKey(e.key);
+  }
+});
+
+})();
+</script>
+
+</div>
+</body>
+</html>
